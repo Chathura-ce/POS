@@ -9,6 +9,10 @@ use App\Models\Customer;
 use App\Models\CreditPayment;
 use App\Models\InventoryMovement;
 use App\Models\Shift;
+use App\Models\Supplier;
+use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
+use App\Models\SupplierPayment;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use Carbon\Carbon;
@@ -25,11 +29,13 @@ class SyncController extends Controller
         $products = Product::when($cursor, fn($q) => $q->where('updated_at', '>', $cursor))->get();
         $categories = Category::when($cursor, fn($q) => $q->where('updated_at', '>', $cursor))->get();
         $customers = Customer::when($cursor, fn($q) => $q->where('updated_at', '>', $cursor))->get();
+        $suppliers = Supplier::when($cursor, fn($q) => $q->where('updated_at', '>', $cursor))->get();
 
         return response()->json([
             'products' => $products,
             'categories' => $categories,
             'customers' => $customers,
+            'suppliers' => $suppliers,
             'server_time' => Carbon::now()->toIso8601String(),
         ]);
     }
@@ -40,6 +46,7 @@ class SyncController extends Controller
 
         try {
             DB::transaction(function () use ($request, $syncedAt) {
+                // Sales
                 foreach ($request->sales ?? [] as $saleData) {
                     $sale = Sale::firstOrCreate(
                         ['id' => $saleData['id']],
@@ -80,6 +87,7 @@ class SyncController extends Controller
                     }
                 }
 
+                // Customers
                 foreach ($request->customers ?? [] as $customerData) {
                     $existing = Customer::find($customerData['id']);
 
@@ -104,6 +112,7 @@ class SyncController extends Controller
                     }
                 }
 
+                // Products
                 foreach ($request->products ?? [] as $productData) {
                     $existing = Product::find($productData['id']);
 
@@ -138,6 +147,7 @@ class SyncController extends Controller
                     }
                 }
 
+                // Credit payments
                 foreach ($request->credit_payments ?? [] as $paymentData) {
                     CreditPayment::firstOrCreate(
                         ['id' => $paymentData['id']],
@@ -153,6 +163,7 @@ class SyncController extends Controller
                         ->decrement('credit_balance', $paymentData['amount']);
                 }
 
+                // Inventory movements
                 foreach ($request->inventory_movements ?? [] as $movementData) {
                     InventoryMovement::firstOrCreate(
                         ['id' => $movementData['id']],
@@ -166,6 +177,7 @@ class SyncController extends Controller
                     );
                 }
 
+                // Shifts
                 foreach ($request->shifts ?? [] as $shiftData) {
                     Shift::firstOrCreate(
                         ['id' => $shiftData['id']],
@@ -178,6 +190,75 @@ class SyncController extends Controller
                             'synced_at' => $syncedAt,
                         ]
                     );
+                }
+
+                // Suppliers
+                foreach ($request->suppliers ?? [] as $supplierData) {
+                    $existing = Supplier::find($supplierData['id']);
+
+                    if ($existing) {
+                        if (Carbon::parse($supplierData['updated_at'])->gt($existing->updated_at)) {
+                            $existing->update([
+                                'name' => $supplierData['name'],
+                                'phone' => $supplierData['phone'] ?? null,
+                                'email' => $supplierData['email'] ?? null,
+                                'balance' => $supplierData['balance'],
+                                'updated_at' => $supplierData['updated_at'],
+                            ]);
+                        }
+                    } else {
+                        Supplier::create([
+                            'id' => $supplierData['id'],
+                            'name' => $supplierData['name'],
+                            'phone' => $supplierData['phone'] ?? null,
+                            'email' => $supplierData['email'] ?? null,
+                            'balance' => $supplierData['balance'],
+                            'created_at' => $supplierData['updated_at'],
+                            'updated_at' => $supplierData['updated_at'],
+                        ]);
+                    }
+                }
+
+                // Purchase Orders (append-only firstOrCreate)
+                foreach ($request->purchase_orders ?? [] as $poData) {
+                    $po = PurchaseOrder::firstOrCreate(
+                        ['id' => $poData['id']],
+                        [
+                            'supplier_id' => $poData['supplier_id'],
+                            'total_amount' => $poData['total_amount'],
+                            'status' => $poData['status'],
+                            'created_at' => $poData['created_at'],
+                            'synced_at' => $syncedAt,
+                        ]
+                    );
+
+                    if ($po->wasRecentlyCreated) {
+                        foreach ($poData['items'] as $itemData) {
+                            PurchaseOrderItem::create([
+                                'id' => $itemData['id'],
+                                'purchase_order_id' => $po->id,
+                                'product_id' => $itemData['product_id'],
+                                'quantity' => $itemData['quantity'],
+                                'unit_cost' => $itemData['unit_cost'],
+                                'line_total' => $itemData['line_total'],
+                            ]);
+                        }
+                    }
+                }
+
+                // Supplier Payments (append-only firstOrCreate, deducts balance)
+                foreach ($request->supplier_payments ?? [] as $paymentData) {
+                    SupplierPayment::firstOrCreate(
+                        ['id' => $paymentData['id']],
+                        [
+                            'supplier_id' => $paymentData['supplier_id'],
+                            'amount' => $paymentData['amount'],
+                            'synced_at' => $syncedAt,
+                        ]
+                    );
+
+                    Supplier::where('id', $paymentData['supplier_id'])
+                        ->decrement('balance', $paymentData['amount']);
                 }
             });
         } catch (\Exception $e) {

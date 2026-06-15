@@ -43,4 +43,17 @@ db.version(5).stores({
     shifts: 'id, opened_at, closed_at, opening_cash, expected_cash, actual_cash, synced',
 });
 
+db.version(6).stores({
+    products: 'id, category_id, name, sku, barcode, is_active, updated_at, synced',
+    categories: 'id, name, is_active',
+    customers: 'id, name, phone, credit_balance, updated_at, synced',
+    offline_sales: 'id, payment_type, created_at, synced',
+    credit_payments: 'id, customer_id, amount, created_at, synced',
+    inventory_movements: 'id, product_id, qty_change, reason, created_at, synced',
+    shifts: 'id, opened_at, closed_at, opening_cash, expected_cash, actual_cash, synced',
+    suppliers: 'id, name, balance, updated_at, synced',
+    purchase_orders: 'id, supplier_id, status, synced',
+    supplier_payments: 'id, supplier_id, amount, synced',
+});
+
 export default db;

@@ -4,6 +4,8 @@ import { usePosStore } from './stores/usePosStore';
 import PosView from './views/PosView.vue';
 import InventoryView from './views/InventoryView.vue';
 import CustomersView from './views/CustomersView.vue';
+import SuppliersView from './views/SuppliersView.vue';
+import ProcurementView from './views/ProcurementView.vue';
 import SalesHistoryView from './views/SalesHistoryView.vue';
 import DashboardView from './views/DashboardView.vue';
 import ShiftModal from './components/ShiftModal.vue';
@@ -133,6 +135,16 @@ onUnmounted(() => {
                 :class="currentView === 'customers' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Customers
             </button>
+            <button @click="currentView = 'suppliers'"
+                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                :class="currentView === 'suppliers' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
+                Suppliers
+            </button>
+            <button @click="currentView = 'procurement'"
+                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                :class="currentView === 'procurement' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
+                Procurement
+            </button>
             <button @click="currentView = 'sales'"
                 class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'sales' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
@@ -158,6 +170,8 @@ onUnmounted(() => {
             <PosView v-if="currentView === 'pos'" :user="user" @logout="logout" />
             <InventoryView v-if="currentView === 'inventory'" />
             <CustomersView v-if="currentView === 'customers'" />
+            <SuppliersView v-if="currentView === 'suppliers'" />
+            <ProcurementView v-if="currentView === 'procurement'" />
             <SalesHistoryView v-if="currentView === 'sales'" />
             <DashboardView v-if="currentView === 'dashboard'" />
         </div>

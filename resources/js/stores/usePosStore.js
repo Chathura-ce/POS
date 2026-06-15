@@ -7,6 +7,8 @@ export const usePosStore = defineStore('pos', () => {
     const cart = ref([]);
     const products = ref([]);
     const customers = ref([]);
+    const suppliers = ref([]);
+    const purchaseOrders = ref([]);
     const activeCustomer = ref(null);
     const taxRate = ref(0.15);
     const isOnline = ref(navigator.onLine);
@@ -77,6 +79,107 @@ export const usePosStore = defineStore('pos', () => {
         });
 
         await loadCustomers();
+        syncData();
+    }
+
+    async function loadProcurement() {
+        suppliers.value = await db.suppliers.toArray();
+        purchaseOrders.value = await db.purchase_orders.toArray();
+    }
+
+    async function saveSupplier(supplier) {
+        const data = {
+            ...supplier,
+            id: supplier.id || crypto.randomUUID(),
+            balance: parseFloat(supplier.balance) || 0,
+            updated_at: new Date().toISOString(),
+            synced: 0,
+        };
+
+        await db.suppliers.put(data);
+        await loadProcurement();
+        syncData();
+    }
+
+    async function createPO(poData) {
+        const po = {
+            id: crypto.randomUUID(),
+            supplier_id: poData.supplier_id,
+            total_amount: poData.total_amount,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            items: poData.items || [],
+            synced: 0,
+        };
+
+        await db.purchase_orders.put(po);
+        await loadProcurement();
+        syncData();
+    }
+
+    async function receivePO(poId) {
+        const po = await db.purchase_orders.get(poId);
+        if (!po || po.status === 'received') return;
+
+        for (const item of po.items) {
+            const product = await db.products.get(item.product_id);
+            if (product) {
+                await db.products.update(item.product_id, {
+                    stock_quantity: (product.stock_quantity || 0) + item.quantity,
+                    updated_at: new Date().toISOString(),
+                    synced: 0,
+                });
+            }
+
+            await db.inventory_movements.put({
+                id: crypto.randomUUID(),
+                product_id: item.product_id,
+                qty_change: item.quantity,
+                reason: 'restock',
+                created_at: new Date().toISOString(),
+                synced: 0,
+            });
+        }
+
+        const supplier = await db.suppliers.get(po.supplier_id);
+        if (supplier) {
+            await db.suppliers.update(po.supplier_id, {
+                balance: (parseFloat(supplier.balance) || 0) + parseFloat(po.total_amount),
+                updated_at: new Date().toISOString(),
+                synced: 0,
+            });
+        }
+
+        await db.purchase_orders.update(poId, {
+            status: 'received',
+            synced: 0,
+        });
+
+        await loadProducts();
+        await loadProcurement();
+        syncData();
+    }
+
+    async function paySupplier(supplierId, amount) {
+        const supplier = await db.suppliers.get(supplierId);
+        if (!supplier) return;
+
+        const newBalance = Math.max(0, (parseFloat(supplier.balance) || 0) - amount);
+
+        await db.suppliers.update(supplierId, {
+            balance: newBalance,
+            updated_at: new Date().toISOString(),
+            synced: 0,
+        });
+
+        await db.supplier_payments.put({
+            id: crypto.randomUUID(),
+            supplier_id: supplierId,
+            amount,
+            synced: 0,
+        });
+
+        await loadProcurement();
         syncData();
     }
 
@@ -272,8 +375,10 @@ export const usePosStore = defineStore('pos', () => {
             if (data.products.length) await db.products.bulkPut(data.products);
             if (data.categories.length) await db.categories.bulkPut(data.categories);
             if (data.customers.length) await db.customers.bulkPut(data.customers);
+            if (data.suppliers?.length) await db.suppliers.bulkPut(data.suppliers);
             await loadProducts();
             await loadCustomers();
+            await loadProcurement();
         } catch (e) {
             console.warn('Pull catalog failed:', e.message);
         }
@@ -312,8 +417,24 @@ export const usePosStore = defineStore('pos', () => {
             .equals(0)
             .toArray();
 
+        const pendingSuppliers = await db.suppliers
+            .where('synced')
+            .equals(0)
+            .toArray();
+
+        const pendingPOs = await db.purchase_orders
+            .where('synced')
+            .equals(0)
+            .toArray();
+
+        const pendingSupplierPayments = await db.supplier_payments
+            .where('synced')
+            .equals(0)
+            .toArray();
+
         if (pendingSales.length === 0 && pendingProducts.length === 0 && pendingCustomers.length === 0 &&
-            pendingCreditPayments.length === 0 && pendingMovements.length === 0 && pendingShifts.length === 0) return;
+            pendingCreditPayments.length === 0 && pendingMovements.length === 0 && pendingShifts.length === 0 &&
+            pendingSuppliers.length === 0 && pendingPOs.length === 0 && pendingSupplierPayments.length === 0) return;
 
         try {
             const { data } = await axios.post('/api/sync/push', {
@@ -323,6 +444,9 @@ export const usePosStore = defineStore('pos', () => {
                 credit_payments: pendingCreditPayments,
                 inventory_movements: pendingMovements,
                 shifts: pendingShifts,
+                suppliers: pendingSuppliers,
+                purchase_orders: pendingPOs,
+                supplier_payments: pendingSupplierPayments,
             });
             if (data.success) {
                 for (const sale of pendingSales) {
@@ -343,6 +467,15 @@ export const usePosStore = defineStore('pos', () => {
                 for (const shift of pendingShifts) {
                     await db.shifts.update(shift.id, { synced: 1 });
                 }
+                for (const supplier of pendingSuppliers) {
+                    await db.suppliers.update(supplier.id, { synced: 1 });
+                }
+                for (const po of pendingPOs) {
+                    await db.purchase_orders.update(po.id, { synced: 1 });
+                }
+                for (const payment of pendingSupplierPayments) {
+                    await db.supplier_payments.update(payment.id, { synced: 1 });
+                }
             }
         } catch (e) {
             console.warn('Sync failed:', e.message);
@@ -353,6 +486,8 @@ export const usePosStore = defineStore('pos', () => {
         cart,
         products,
         customers,
+        suppliers,
+        purchaseOrders,
         activeCustomer,
         taxRate,
         isOnline,
@@ -365,6 +500,11 @@ export const usePosStore = defineStore('pos', () => {
         clearActiveCustomer,
         saveCustomer,
         settleCredit,
+        loadProcurement,
+        saveSupplier,
+        createPO,
+        receivePO,
+        paySupplier,
         adjustStock,
         openShift,
         closeShift,
