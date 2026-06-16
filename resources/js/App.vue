@@ -18,6 +18,7 @@ const user = ref(null);
 const showLogin = ref(!token.value);
 const currentView = ref('pos');
 const showShiftModal = ref(false);
+const mobileMenuOpen = ref(false);
 const email = ref('owner@pos.test');
 const password = ref('password');
 const loginError = ref('');
@@ -67,6 +68,11 @@ async function logout() {
     localStorage.removeItem('pos_user_id');
     delete axios.defaults.headers.common.Authorization;
     showLogin.value = true;
+}
+
+function navigate(view) {
+    currentView.value = view;
+    mobileMenuOpen.value = false;
 }
 
 onMounted(() => {
@@ -119,53 +125,88 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="h-screen flex flex-col">
-        <nav class="h-12 bg-white border-b border-gray-200 flex items-center px-5 gap-4 shrink-0">
-            <button @click="currentView = 'pos'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+        <nav class="sticky top-0 z-50 bg-white border-b border-gray-200 h-12 flex items-center px-3 lg:px-5 gap-2 lg:gap-4 shrink-0">
+            <button @click="mobileMenuOpen = !mobileMenuOpen"
+                class="lg:hidden text-xl px-2 py-1 rounded-lg hover:bg-gray-100 cursor-pointer"
+                aria-label="Toggle menu">
+                <span v-if="!mobileMenuOpen">☰</span>
+                <span v-else class="text-2xl">&times;</span>
+            </button>
+
+            <button @click="navigate('pos')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'pos' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 POS
             </button>
-            <button @click="currentView = 'inventory'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            <button @click="navigate('inventory')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Inventory
             </button>
-            <button @click="currentView = 'customers'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            <button @click="navigate('customers')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'customers' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Customers
             </button>
-            <button @click="currentView = 'suppliers'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            <button @click="navigate('suppliers')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'suppliers' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Suppliers
             </button>
-            <button @click="currentView = 'procurement'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            <button @click="navigate('procurement')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'procurement' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Procurement
             </button>
-            <button @click="currentView = 'sales'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            <button @click="navigate('sales')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'sales' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Sales
             </button>
-            <button @click="currentView = 'dashboard'"
-                class="text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            <button @click="navigate('dashboard')"
+                class="hidden lg:inline-flex text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 :class="currentView === 'dashboard' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'">
                 Dashboard
             </button>
             <div class="flex-1"></div>
             <button @click="showShiftModal = true"
-                class="text-xs px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 font-medium transition-colors cursor-pointer">
+                class="text-xs px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 font-medium transition-colors cursor-pointer shrink-0">
                 End of Day
             </button>
-            <span class="text-xs text-gray-500">{{ user?.name }}</span>
+            <span class="hidden sm:inline text-xs text-gray-500 truncate max-w-24">{{ user?.name }}</span>
             <button @click="logout"
-                class="text-xs text-red-500 hover:text-red-700 font-medium cursor-pointer">
+                class="text-xs text-red-500 hover:text-red-700 font-medium cursor-pointer shrink-0">
                 Logout
             </button>
         </nav>
+
+        <div v-if="mobileMenuOpen"
+            class="fixed inset-0 z-40 bg-white lg:hidden flex flex-col pt-12">
+            <div class="flex-1 overflow-y-auto p-4 space-y-1">
+                <button v-for="item in [
+                    { key: 'pos', label: '🛒 POS' },
+                    { key: 'inventory', label: '📦 Inventory' },
+                    { key: 'customers', label: '👥 Customers' },
+                    { key: 'suppliers', label: '🏭 Suppliers' },
+                    { key: 'procurement', label: '📋 Procurement' },
+                    { key: 'sales', label: '💰 Sales' },
+                    { key: 'dashboard', label: '📊 Dashboard' },
+                ]" :key="item.key" @click="navigate(item.key)"
+                    class="w-full text-left px-5 py-4 rounded-xl text-lg font-semibold transition-colors cursor-pointer"
+                    :class="currentView === item.key
+                        ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'">
+                    {{ item.label }}
+                </button>
+            </div>
+            <div class="p-4 border-t border-gray-200 space-y-2">
+                <p class="text-sm text-gray-500 text-center">{{ user?.name }}</p>
+                <button @click="logout"
+                    class="w-full py-3 rounded-xl bg-red-50 text-red-600 font-semibold text-sm hover:bg-red-100 transition-colors cursor-pointer">
+                    Logout
+                </button>
+            </div>
+        </div>
+
         <div class="flex-1 overflow-hidden">
             <PosView v-if="currentView === 'pos'" :user="user" @logout="logout" />
             <InventoryView v-if="currentView === 'inventory'" />
